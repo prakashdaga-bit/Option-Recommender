@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+kiteconnect
+pydantic
+ta\npandas\nscikit-learn
+\nkiteconnect==5.0.0\npython-dotenv
+\nkiteconnect==5.0.0\npython-dotenv
+\npyotp\nselenium\nwebdriver-manager
+
+yfinance
+textblob
