@@ -2,6 +2,8 @@ import os
 import logging
 from kiteconnect import KiteConnect
 from dotenv import load_dotenv
+import kiteconnect.exceptions
+from generate_token import generate_token
 
 # Load environment variables
 load_dotenv()
@@ -15,16 +17,36 @@ class KiteService:
         self.api_secret = os.getenv("KITE_API_SECRET")
         self.access_token = os.getenv("KITE_ACCESS_TOKEN")
         self.kite = None
-        
-        if self.api_key and self.access_token:
-            try:
-                self.kite = KiteConnect(api_key=self.api_key)
-                self.kite.set_access_token(self.access_token)
-                logging.info("KiteConnect initialized successfully.")
-            except Exception as e:
-                logging.error(f"Failed to initialize KiteConnect: {e}")
+        if self.api_key:
+            self.init_kite()
         else:
             logging.warning("Kite API credentials not found in environment.")
+
+    def init_kite(self):
+        """Initializes the KiteConnect object with the current access token."""
+        try:
+            self.kite = KiteConnect(api_key=self.api_key)
+            if self.access_token:
+                self.kite.set_access_token(self.access_token)
+                logging.info("KiteConnect initialized successfully with existing token.")
+            else:
+                logging.warning("No existing KITE_ACCESS_TOKEN found. Authentication required.")
+        except Exception as e:
+            logging.error(f"Failed to initialize KiteConnect: {e}")
+
+    def refresh_token(self):
+        """Triggers the automated headless Selenium login to fetch a new token."""
+        logging.info("Triggering automated TOTP login to refresh Kite Token...")
+        try:
+            new_token = generate_token()
+            if new_token:
+                self.access_token = new_token
+                self.init_kite()
+                logging.info("Successfully refreshed Kite Token implicitly!")
+                return True
+        except Exception as e:
+            logging.error(f"Failed to auto-refresh token: {e}")
+        return False
 
     def get_ltp(self, instruments):
         """
@@ -44,6 +66,14 @@ class KiteService:
                 
         try:
             return self.kite.quote(formatted_instruments)
+        except kiteconnect.exceptions.TokenException:
+            logging.warning("Token expired during get_ltp. Attempting auto-refresh...")
+            if self.refresh_token():
+                try: 
+                    return self.kite.quote(formatted_instruments)
+                except Exception as e:
+                    logging.error(f"Error fetching LTP after token refresh: {e}")
+            return {}
         except Exception as e:
             logging.error(f"Error fetching LTP: {e}")
             return {}
@@ -102,6 +132,11 @@ class KiteService:
             options_data = list(strike_map.values())
             options_data.sort(key=lambda x: x['strike'])
             
+        except kiteconnect.exceptions.TokenException:
+            logging.warning("Token expired during get_option_chain. Attempting auto-refresh...")
+            if self.refresh_token():
+                # Recursively try exactly once if refresh succeeds
+                return self.get_option_chain(symbol, current_price, range_min, range_max)
         except Exception as e:
             logging.error(f"Error fetching option chain: {e}")
             

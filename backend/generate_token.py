@@ -159,7 +159,7 @@ def generate_token():
                 data = kite.generate_session(request_token, api_secret=api_secret)
                 access_token = data["access_token"]
                 
-                # Write back to .env
+                # Write back to .env (for local dev)
                 env_path = ".env"
                 if os.path.exists(env_path):
                     with open(env_path, "r") as file:
@@ -174,18 +174,16 @@ def generate_token():
                                 file.write(line)
                         if not updated:
                             file.write(f"\nKITE_ACCESS_TOKEN={access_token}\n")
-                else:
-                    with open(env_path, "w") as file:
-                         file.write(f"KITE_ACCESS_TOKEN={access_token}\n")
-                         
-                print(f"🎉 SUCCESS! Token saved to .env")
+                
+                print(f"🎉 SUCCESS! Returning new access token.")
+                return access_token
                 
             except kiteconnect.exceptions.TokenException as e:
                 print(f"❌ AUTH ERROR: {e}")
-                exit(1)
+                raise Exception(f"Auth Error: {e}")
             except Exception as e:
                 print(f"❌ API ERROR: {e}")
-                exit(1)
+                raise Exception(f"API Error: {e}")
             
         else:
             print(f"❌ Final URL: {current_url}")
