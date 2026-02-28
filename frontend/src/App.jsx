@@ -13,7 +13,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.post('http://localhost:8000/analyze', payload);
+      const response = await axios.post('https://option-recommender.onrender.com/analyze', payload);
       setResults(response.data.data);
     } catch (err) {
       setError(err.message || 'Failed to fetch analysis');
@@ -49,7 +49,7 @@ function App() {
 
       {error && (
         <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', padding: '1rem', borderRadius: '12px', color: 'var(--danger)', marginBottom: '2rem' }}>
-          <strong>Error:</strong> {error}. Make sure the FastAPI backend is running on port 8000.
+          <strong>Error:</strong> {error}. Make sure the Backend server is running.
         </div>
       )}
 
