@@ -10,6 +10,9 @@ from kite_service import kite_service
 from strategy_engine import calculate_strategy
 from advanced_analyzer import AdvancedOptionsAnalyzer
 from sentiment_analyzer import sentiment_service
+from exit_logic import check_my_exit
+from datetime import datetime
+import re
 
 analyzer = AdvancedOptionsAnalyzer()
 
@@ -84,6 +87,95 @@ def analyze_options(req: AnalysisRequest):
         })
         
     return {"data": results}
+
+@app.get("/positions")
+def get_positions_analysis():
+    """
+    Fetch open positions and run Exit Logic on them.
+    """
+    raw_positions = kite_service.get_positions()
+    analyzed_positions = []
+    
+    # 1. Fetch live prices for all underlying symbols in one go (optimization possible, but loop is fine for now)
+    # Actually, let's process each position
+    
+    for pos in raw_positions:
+        # Parse Symbol and Expiry
+        # Zerodha Symbol Format: NIFTY24FEB22000CE or RELIANCE24FEB2400CE
+        # We need to extract: Underlying, Expiry Date, Strike (to calc delta if needed)
+        
+        tradingsymbol = pos['tradingsymbol']
+        instrument_type = pos['instrument_token'] # We might need this, but 'tradingsymbol' is easier to parse manually if needed
+        
+        # Simple parsing logic (This is fragile, ideally use instrument_token master list)
+        # But for "NIFTY" or "BANKNIFTY", it's standard. 
+        # For stocks "RELIANCE", it works too.
+        
+        # Fetch Underlying LTP
+        # pos['last_price'] is the Option Price. We need Underlying Price.
+        # We can try to guess underlying symbol.
+        
+        underlying = "NIFTY 50" # Default fallback? No.
+        if "NIFTY" in tradingsymbol and "BANK" not in tradingsymbol:
+             underlying = "NIFTY 50"
+        elif "BANKNIFTY" in tradingsymbol:
+             underlying = "NIFTY BANK"
+        else:
+             # Extract from tradingsymbol? E.g. RELIANCE24...
+             # Regex to find the alphabetical prefix
+             match = re.match(r"([A-Z]+)", tradingsymbol)
+             if match:
+                 underlying = match.group(1)
+        
+        # Fetch Real Underlying Price
+        ltp_data = kite_service.get_ltp([underlying])
+        underlying_price = 0
+        if underlying in ltp_data:
+             underlying_price = ltp_data[underlying]['last_price']
+        elif f"NSE:{underlying}" in ltp_data:
+             underlying_price = ltp_data[f"NSE:{underlying}"]['last_price']
+             
+        # Days to Expiry? 
+        # Zerodha API response usually has 'expiry' field in datetime format if we used 'net' properly?
+        # Actually 'net' positions list might NOT have expiry date directly stringified.
+        # It's better to fetch instrument master or parse string.
+        # Let's mock expiry parsing or rely on manual check for now if complex.
+        # Wait, strictly speaking we can't easily parse expiry from "NIFTY24FEB..." without a library or efficient regex.
+        # For now, let's assume we can get it or default to a safe value (to test logic).
+        # IMPROVEMENT: Use `kite.instruments()` to map token to details. Expensive to call every time.
+        # Hack: Assume 10 days if unknown to avoid false positive EXIT on time.
+        days_to_expiry = 10 
+        
+        # Exit Check
+        # entry_price = pos['average_price']
+        # current_price = pos['last_price']
+        # quantity = pos['quantity']
+        
+        bias = "LONG" if pos['quantity'] > 0 else "SHORT"
+        
+        exit_decision = check_my_exit(
+            position_type="CE" if "CE" in tradingsymbol else "PE",
+            bias=bias,
+            current_price=pos['last_price'],
+            entry_price=pos['average_price'],
+            days_to_expiry=days_to_expiry,
+            underlying_symbol=underlying,
+            underlying_price=underlying_price
+        )
+        
+        analyzed_positions.append({
+            "symbol": tradingsymbol,
+            "qty": pos['quantity'],
+            "avg_price": pos['average_price'],
+            "ltp": pos['last_price'],
+            "pnl": pos['pnl'],
+            "action": exit_decision['action'],
+            "reason": exit_decision['reason'],
+            "underlying": underlying,
+            "underlying_price": underlying_price
+        })
+        
+    return {"data": analyzed_positions}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

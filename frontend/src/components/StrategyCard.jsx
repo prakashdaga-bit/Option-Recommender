@@ -2,7 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Info, Zap, AlertTriangle, IndianRupee } from 'lucide-react';
 
 export default function StrategyCard({ result }) {
-  const { stock, spot, prediction, signal, pcr, stats, seller_recommendation, sentiment } = result;
+  const { stock, spot, prediction, signal, stats, seller_recommendation, sentiment } = result;
 
   const isBullish = signal === 'Bullish';
   const isBearish = signal === 'Bearish';

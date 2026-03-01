@@ -36,6 +36,10 @@ class KiteService:
 
     def refresh_token(self):
         """Triggers the automated headless Selenium login to fetch a new token."""
+        if not os.getenv("ZERODHA_TOTP_SECRET"):
+            logging.warning("Cannot auto-refresh token: ZERODHA_TOTP_SECRET not found in environment.")
+            return False
+
         logging.info("Triggering automated TOTP login to refresh Kite Token...")
         try:
             new_token = generate_token()
@@ -141,6 +145,30 @@ class KiteService:
             logging.error(f"Error fetching option chain: {e}")
             
         return options_data
+
+    def get_positions(self):
+        """
+        Fetch all open Day and Overnight positions.
+        """
+        if not self.kite:
+            raise Exception("Kite API not initialized")
+            
+        try:
+            positions = self.kite.positions()
+            # Combine net and day positions? Usually 'net' contains the actual open book.
+            # We will focus on 'net' which gives the overall consolidated view.
+            return positions.get("net", [])
+        except kiteconnect.exceptions.TokenException:
+            logging.warning("Token expired during get_positions. Attempting auto-refresh...")
+            if self.refresh_token():
+                try:
+                    return self.kite.positions().get("net", [])
+                except Exception as e:
+                    logging.error(f"Error fetching positions after token refresh: {e}")
+            return []
+        except Exception as e:
+            logging.error(f"Error fetching positions: {e} | Type: {type(e)}")
+            return []
 
 # Initialize singleton
 kite_service = KiteService()
